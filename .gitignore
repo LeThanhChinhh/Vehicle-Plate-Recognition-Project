@@ -1,6 +1,10 @@
 venv/
 __pycache__/
-*.pt
+yolov8n.pt
 *.db
 .DS_Store
 .vscode/
+runs/
+test_demo.py
+train.py
+datasets/

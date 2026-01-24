@@ -1,7 +1,14 @@
-ultralytics==8.0.230
-paddleocr>=2.7.0
-opencv-python==4.9.0.80
+# --- AI & Xử lý ảnh ---
+ultralytics>=8.0.0
+paddlepaddle==2.6.2
+paddleocr==2.7.3
+# Quan trọng: PaddleOCR chưa tương thích với Numpy 2.0
 numpy<2.0.0
-Pillow==10.2.0
-customtkinter==5.2.2
-packaging
+opencv-python==4.9.0.80
+
+# --- Giao diện & Tiện ích ---
+Pillow>=10.0.0
+
+# --- Xử lý dữ liệu (Dành cho Member C lưu database sau này) ---
+pandas
+openpyxl

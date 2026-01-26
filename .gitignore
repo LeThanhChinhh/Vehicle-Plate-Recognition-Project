@@ -8,3 +8,13 @@ runs/
 test_demo.py
 train.py
 datasets/
+test_video.py
+gui/__init__.py
+gui/__pycache__
+core/__pycache__
+core/services/__pycache__
+database/__init__.py
+test_video.py
+video2.mp4
+video3.mp4
+main.py

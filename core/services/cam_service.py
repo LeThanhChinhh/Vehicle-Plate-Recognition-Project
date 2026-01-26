@@ -2,29 +2,17 @@ import cv2
 
 class CamService:
     def __init__(self, detector):
-        """
-        Khởi tạo dịch vụ Camera.
-        Input: detector (Bộ não AI đã load model)
-        """
         self.detector = detector
 
     def process_cam_stream(self, cam_id=0, skip_frames=5):
-        """
-        Hàm xử lý luồng Camera.
-        Input: 
-            - cam_id: 0 là webcam máy tính, hoặc đường dẫn IP Camera
-            - skip_frames: Số frame bỏ qua không detect (để giảm lag)
-        Output: 
-            - Yield ra từng frame đã vẽ khung để hiển thị
-        """
-        # 1. Mở kết nối Camera
+        # 1. MO KET NOI CAMERA, SO 0 LA WEBCAM MAY TINH 
         cap = cv2.VideoCapture(cam_id)
         
         if not cap.isOpened():
-            print(f"❌ Lỗi: Không mở được Camera ID {cam_id}")
+            print(f"Không mở được Camera ")
             return
 
-        print(f"📷 Camera {cam_id} đang chạy...")
+        print(f"Camera đang chạy...")
         frame_count = 0
         
 
@@ -34,7 +22,7 @@ class CamService:
 
             ret, frame = cap.read()
             if not ret:
-                print("⚠️ Mất tín hiệu Camera hoặc đã kết thúc.")
+                print("Mất tín hiệu Camera hoặc đã kết thúc.")
                 break
 
             frame = cv2.resize(frame, (800, 600))
@@ -47,11 +35,11 @@ class CamService:
                 text = last_result['text']
                 conf = last_result['conf']
                 
-                # Vẽ khung chữ nhật
+                # VE KHUNG HINH CHU NHAT
                 x1, y1, x2, y2 = map(int, box)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 
-                # Viết chữ biển số
+                # VIET CHU BIEN SO
                 label = f"{text} ({conf})"
                 cv2.putText(frame, label, (x1, y1 - 10), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)

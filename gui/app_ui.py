@@ -4,7 +4,7 @@ from PIL import Image, ImageTk
 import cv2
 
 from core.detector import LicensePlateDetector
-from core.service.video_service import VideoService
+from core.services.video_service import VideoService
 
 try:
     from gui.windows import show_result_popup

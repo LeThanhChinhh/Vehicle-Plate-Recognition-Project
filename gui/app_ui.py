@@ -2,226 +2,274 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
 import cv2
+import time
 
 from core.detector import LicensePlateDetector
+from core.services.image_service import ImageService
 from core.services.video_service import VideoService
+from core.services.cam_service import CamService
 
-try:
-    from gui.windows import show_result_popup
-except ImportError:
-    def show_result_popup(root, crop, text):
-        pass
-
+# Cấu hình giao diện chung
 ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
+ctk.set_default_color_theme("dark-blue")
 
 class LicensePlateApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         
-        # Cấu hình cửa sổ
-        self.title("HỆ THỐNG NHẬN DIỆN BIỂN SỐ XE - AI PRO")
+        # 1. Cấu hình Window
+        self.title("AI PARKING SYSTEM - PRO VERSION")
         self.geometry("1280x760")
         
-        # Khởi tạo Service
-        print("⏳ Đang khởi tạo Service...")
-        detector = LicensePlateDetector()
-        self.service = VideoService(detector) 
+        # Biến màu sắc
+        self.color_bg_main = "#101010"
+        self.color_bg_side = "#1A1A1A"
+        self.color_accent  = "#00ADB5"
+        self.color_danger  = "#E74C3C"
+        self.color_btn_sec = "#2D2D2D"
+        self.color_text    = "#EEEEEE"
+        
+        # Khởi tạo Services
+        self.init_services()
 
         # Biến trạng thái
-        self.current_image_cv2 = None
-        self.cap = None
-        self.is_streaming = False
+        self.current_stream = None
+        self.is_running = False
         self.after_id = None
+        self.prev_time = 0  # Biến để tính FPS
         
-        # Dựng Layout
+        # Grid Layout
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
+        
+        # Setup UI
         self.setup_sidebar()
-        self.setup_main_area()
-        self.change_mode("Image")
+        self.setup_main_screen()
+
+    def init_services(self):
+        try:
+            self.detector = LicensePlateDetector(model_path='core/plate_model.pt')
+            self.image_service = ImageService(self.detector)
+            self.video_service = VideoService(self.detector)
+            try:
+                self.cam_service = CamService(self.detector)
+            except:
+                self.cam_service = CamService(self.detector, db_manager=None)
+            print("Ứng dụng chạy thành công !")
+        except Exception as e:
+            print(f" Lỗi {e}")
 
     def setup_sidebar(self):
-        self.sidebar_frame = ctk.CTkFrame(self, width=250, corner_radius=0)
-        self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(8, weight=1)
+        self.sidebar = ctk.CTkFrame(self, width=280, corner_radius=0, fg_color=self.color_bg_side)
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        self.sidebar.grid_rowconfigure(10, weight=1) 
+        self.sidebar.grid_columnconfigure(0, weight=1)
 
-        self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="AI LICENSE\nPLATE DETECTOR", 
-                                       font=ctk.CTkFont(size=20, weight="bold"))
-        self.logo_label.grid(row=0, column=0, padx=20, pady=20)
-
-        self.mode_selector = ctk.CTkSegmentedButton(self.sidebar_frame, 
-                                                    values=["Image", "Video", "Camera"],
-                                                    command=self.change_mode)
-        self.mode_selector.set("Image")
-        self.mode_selector.grid(row=1, column=0, padx=20, pady=(10, 20))
-
-        self.btn_source = ctk.CTkButton(self.sidebar_frame, text="📂 Chọn Ảnh", height=40, 
-                                        fg_color="#3B8ED0", hover_color="#36719F",
-                                        command=self.handle_source)
-        self.btn_source.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
-
-        self.btn_stop = ctk.CTkButton(self.sidebar_frame, text="⏹ Dừng Phát", height=40,
-                                      fg_color="#E74C3C", hover_color="#C0392B",
-                                      state="disabled", command=self.stop_stream)
-        self.btn_stop.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
-
-        ctk.CTkFrame(self.sidebar_frame, height=2, fg_color="gray30").grid(row=4, column=0, sticky="ew", padx=20, pady=20)
-
-        self.btn_detect = ctk.CTkButton(self.sidebar_frame, text="🔍 QUÉT ẢNH NÀY", height=50,
-                                        font=ctk.CTkFont(size=16, weight="bold"),
-                                        fg_color="#E67E22", hover_color="#D35400",
-                                        command=self.run_process_image_mode)
-        self.btn_detect.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
-
-        self.lbl_result = ctk.CTkLabel(self.sidebar_frame, text="---", 
-                                       font=ctk.CTkFont(size=24, weight="bold"),
-                                       text_color="#2ECC71")
-        self.lbl_result.grid(row=7, column=0, padx=20, pady=20, sticky="n")
-
-    def setup_main_area(self):
-        self.main_frame = ctk.CTkFrame(self, corner_radius=10, fg_color="#1a1a1a")
-        self.main_frame.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+        # --- HEADER ---
+        self.lbl_logo = ctk.CTkLabel(self.sidebar, text="AUTO PARKING\nSYSTEM", 
+                                     font=ctk.CTkFont(family="Roboto", size=24, weight="bold"), 
+                                     text_color=self.color_text)
+        self.lbl_logo.grid(row=0, column=0, padx=20, pady=(40, 10))
         
-        self.video_label = ctk.CTkLabel(self.main_frame, text="Vui lòng chọn nguồn dữ liệu...", font=("Arial", 16))
-        self.video_label.pack(fill="both", expand=True, padx=10, pady=10)
+        div = ctk.CTkFrame(self.sidebar, height=2, fg_color="#333333")
+        div.grid(row=1, column=0, sticky="ew", padx=30, pady=(0, 30))
 
-    # logic điều khiển
+        # --- INPUT GROUP ---
+        lbl_input = ctk.CTkLabel(self.sidebar, text="NGUỒN DỮ LIỆU", anchor="w", 
+                                 font=ctk.CTkFont(size=12, weight="bold"), text_color="#888888")
+        lbl_input.grid(row=2, column=0, sticky="w", padx=30, pady=(0, 10))
 
-    def change_mode(self, value):
-        self.stop_stream()
-        self.lbl_result.configure(text="---")
+        btn_font = ctk.CTkFont(family="Roboto", size=14, weight="bold")
+
+        self.btn_img = ctk.CTkButton(self.sidebar, text=" CHỌN ẢNH", height=50, font=btn_font,
+                                     fg_color=self.color_btn_sec, hover_color="#3A3A3A",
+                                     corner_radius=8, anchor="w", 
+                                     command=self.on_click_image)
+        self.btn_img.grid(row=3, column=0, padx=20, pady=5, sticky="ew")
+
+        self.btn_video = ctk.CTkButton(self.sidebar, text=" CHỌN VIDEO", height=50, font=btn_font,
+                                       fg_color=self.color_btn_sec, hover_color="#3A3A3A",
+                                       corner_radius=8, anchor="w",
+                                       command=self.on_click_video)
+        self.btn_video.grid(row=4, column=0, padx=20, pady=5, sticky="ew")
+
+        # --- CONTROL GROUP ---
+        lbl_control = ctk.CTkLabel(self.sidebar, text="ĐIỀU KHIỂN", anchor="w", 
+                                   font=ctk.CTkFont(size=12, weight="bold"), text_color="#888888")
+        lbl_control.grid(row=5, column=0, sticky="w", padx=30, pady=(30, 10))
+
+        self.btn_cam = ctk.CTkButton(self.sidebar, text=" LIVE CAMERA", height=50, font=btn_font,
+                                     fg_color=self.color_accent, hover_color="#008C9E",
+                                     text_color="white", corner_radius=8,
+                                     command=self.on_click_camera)
+        self.btn_cam.grid(row=6, column=0, padx=20, pady=5, sticky="ew")
+
+        self.btn_stop = ctk.CTkButton(self.sidebar, text=" DỪNG HỆ THỐNG", height=50, font=btn_font,
+                                      fg_color=self.color_danger, hover_color="#C0392B",
+                                      state="disabled", corner_radius=8,
+                                      command=self.stop_stream)
+        self.btn_stop.grid(row=7, column=0, padx=20, pady=5, sticky="ew")
+
+        # --- RESULT AREA ---
+        res_frame = ctk.CTkFrame(self.sidebar, width=240, height=140, 
+                                 fg_color="black", corner_radius=12, 
+                                 border_width=1, border_color="#333333")
+        res_frame.grid(row=12, column=0, padx=20, pady=30)
+        res_frame.pack_propagate(False)
+
+        ctk.CTkLabel(res_frame, text="BIỂN SỐ NHẬN DIỆN", font=ctk.CTkFont(size=11), text_color="gray").pack(pady=(15,5))
         
-        if value == "Image":
-            self.btn_source.configure(text="📂 Chọn File Ảnh", state="normal")
-            self.btn_stop.configure(state="disabled")
-            self.btn_detect.configure(state="normal", text="🔍 QUÉT ẢNH NÀY")
-        elif value == "Video":
-            self.btn_source.configure(text="🎞️ Chọn File Video", state="normal")
-            self.btn_stop.configure(state="disabled")
-            self.btn_detect.configure(state="disabled", text="⚡ ĐANG QUÉT TỰ ĐỘNG")
-        elif value == "Camera":
-            self.btn_source.configure(text="📹 Bật Camera", state="normal")
-            self.btn_stop.configure(state="disabled")
-            self.btn_detect.configure(state="disabled", text="⚡ ĐANG QUÉT TỰ ĐỘNG")
+        self.lbl_result = ctk.CTkLabel(res_frame, text="---", 
+                                       font=ctk.CTkFont(family="Consolas", size=32, weight="bold"), 
+                                       text_color=self.color_accent)
+        self.lbl_result.pack(expand=True)
 
-    def handle_source(self):
-        mode = self.mode_selector.get()
-        if mode == "Image":
-            path = filedialog.askopenfilename(filetypes=[("Images", "*.jpg *.png *.jpeg")])
-            if path:
-                self.current_image_cv2 = cv2.imread(path)
-                self.display_image(self.current_image_cv2)
-        elif mode == "Video":
-            path = filedialog.askopenfilename(filetypes=[("Videos", "*.mp4 *.avi *.mkv")])
-            if path:
-                self.start_stream(path)
-        elif mode == "Camera":
-            self.start_stream(0)
+    def setup_main_screen(self):
+        self.main_frame = ctk.CTkFrame(self, fg_color=self.color_bg_main, corner_radius=0)
+        self.main_frame.grid(row=0, column=1, sticky="nsew")
+        
+        self.main_frame.grid_columnconfigure(0, weight=1)
+        self.main_frame.grid_rowconfigure(0, weight=1)
 
-    def start_stream(self, source):
+        # Khung chứa video
+        self.video_container = ctk.CTkFrame(self.main_frame, fg_color="#000000", 
+                                            corner_radius=15, border_width=2, border_color="#333333")
+        self.video_container.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
+        
+        self.video_container.grid_rowconfigure(0, weight=1)
+        self.video_container.grid_columnconfigure(0, weight=1)
+
+        self.video_display = ctk.CTkLabel(self.video_container, text="SẴN SÀNG HOẠT ĐỘNG\nVui lòng chọn nguồn dữ liệu", 
+                                          font=ctk.CTkFont(size=16), text_color="gray")
+        self.video_display.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
+
+    # LOGIC CONTROL
+    # Nút chọn ảnh 
+    def on_click_image(self):
         self.stop_stream()
-        self.cap = cv2.VideoCapture(source)
-        if not self.cap.isOpened():
-            messagebox.showerror("Lỗi", "Không thể mở nguồn phát!")
+        path = filedialog.askopenfilename(filetypes=[("Images", "*.jpg *.png *.jpeg")])
+        if path:
+            try:
+                processed_img, result = self.image_service.process_image(path)
+                if processed_img is not None:
+                    text = result['text'] if result and result.get('has_plate') else "NO PLATE"
+                    self.lbl_result.configure(text=text)
+                    self.show_frame(processed_img)
+                    print(f" Xử lý ảnh hoàn tất: {text}")
+            except Exception as e:
+                print(f"Lỗi ảnh: {e}")
+    # Nút chọn video
+    def on_click_video(self):
+        self.stop_stream()
+        path = filedialog.askopenfilename(filetypes=[("Videos", "*.mp4 *.avi *.mkv")])
+        if path:
+            try:
+                self.current_stream = self.video_service.process_video_stream(path, skip_frames=3)
+                self.start_loop()
+            except Exception as e:
+                print(f"Lỗi video: {e}")
+
+    # Nút chọn camera
+    def on_click_camera(self):
+        self.stop_stream()
+        try:
+            self.current_stream = self.cam_service.process_cam_stream(cam_id=0, skip_frames=5)
+            self.start_loop()
+        except Exception as e:
+            print(f"Lỗi Camera: {e}")
+            messagebox.showerror("Lỗi", "Không thể mở Camera")
+
+    # Chạy vòng lặp UI
+    def start_loop(self):
+        self.is_running = True
+        self.btn_stop.configure(state="normal", fg_color=self.color_danger)
+        
+        # Disable các nút input
+        self.btn_img.configure(state="disabled")
+        self.btn_video.configure(state="disabled")
+        self.btn_cam.configure(state="disabled")
+        
+        # Reset thời gian để tính FPS
+        self.prev_time = time.time()
+        
+        self.update_ui_loop()
+
+    # Câp nhật vòng lặp UI
+    def update_ui_loop(self):
+        if not self.is_running or self.current_stream is None:
             return
-        
-        self.is_streaming = True
-        self.btn_source.configure(state="disabled")
-        self.btn_stop.configure(state="normal")
-        
-        # reset trạng thái
-        if hasattr(self.service, 'reset'):
-            self.service.reset()
-        
-        self.video_loop()
 
+        try:
+            # TÍNH TOÁN FPS
+            curr_time = time.time()
+            fps = 1 / (curr_time - self.prev_time) if (curr_time - self.prev_time) > 0 else 0
+            self.prev_time = curr_time
+            
+            # Lấy data từ Generator
+            data = next(self.current_stream)
+            
+            if isinstance(data, tuple):
+                frame, result = data
+                
+                # LOG RA TERMINAL
+                if result and result.get('has_plate'):
+                    text = result['text']
+                    conf = result['conf']
+                    self.lbl_result.configure(text=text)
+                    
+                    print(f"\033[92m [FPS: {int(fps)}] DETECTED: {text} | Conf: {conf}\033[0m")
+            else:
+                frame = data
+
+            # VẼ FPS LÊN MÀN HÌNH
+            cv2.putText(frame, f"FPS: {int(fps)}", (20, 40), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+            self.show_frame(frame)
+            self.after_id = self.after(30, self.update_ui_loop)
+
+        except StopIteration:
+            self.stop_stream()
+            messagebox.showinfo("Thông báo", "Đã kết thúc video.")
+        except Exception as e:
+            print(f"Error Loop: {e}")
+            self.stop_stream()
+
+    # Dừng vòng lặp UI
     def stop_stream(self):
-        self.is_streaming = False
-        if self.cap:
-            self.cap.release()
-            self.cap = None
+        self.is_running = False
+        self.current_stream = None
         if self.after_id:
             self.after_cancel(self.after_id)
             self.after_id = None
-        self.btn_stop.configure(state="disabled")
-        self.btn_source.configure(state="normal")
-        self.video_label.configure(image=None, text="Đã dừng phát.")
-
-    # Logic gọi service (video)
-    def video_loop(self):
-        if self.is_streaming and self.cap:
-            ret, frame = self.cap.read()
-            if not ret:
-                self.stop_stream()
-                return
-
-            # GỌI SERVICE ĐỂ XỬ LÝ FRAME
-            processed_frame, text_result, _ = self.service.process_frame(frame)
-            
-            # Cập nhật UI Label
-            if text_result:
-                self.lbl_result.configure(text=text_result)
-            
-            # Hiển thị ảnh (dùng hàm đã fix resize)
-            self.display_image(processed_frame)
-            
-            # Loop
-            self.after_id = self.after(30, self.video_loop)
-
-    # Logic gọi service (image)
-    def run_process_image_mode(self):
-        if self.current_image_cv2 is None:
-            return
-
-        # Gọi Service để xử lý ảnh
-        processed_frame, result = self.service.process_static_image(self.current_image_cv2)
         
-        # Hiển thị ảnh kết quả lên màn hình chính
-        self.display_image(processed_frame)
+        self.btn_stop.configure(state="disabled", fg_color="#555555") 
+        self.btn_img.configure(state="normal")
+        self.btn_video.configure(state="normal")
+        self.btn_cam.configure(state="normal")
+        
+        self.video_display.configure(image=None, text="ĐÃ DỪNG HỆ THỐNG")
+        self.lbl_result.configure(text="---")
 
-        # Xử lý kết quả phụ (Text, Popup)
-        if result and result.get('has_plate'):
-            text = result['text']
-            self.lbl_result.configure(text=text.replace('\n', ' - '))
-            
-            box_key = 'box_expanded' if 'box_expanded' in result else 'box'
-            if box_key in result:
-                x1, y1, x2, y2 = map(int, result[box_key])
-                
-                # Ensure coordinates are within image bounds for cropping
-                h_img, w_img = self.current_image_cv2.shape[:2]
-                x1, y1 = max(0, x1), max(0, y1)
-                x2, y2 = min(w_img, x2), min(h_img, y2)
-                
-                plate_crop = self.current_image_cv2[y1:y2, x1:x2]
-                show_result_popup(self, plate_crop, text)
-        else:
-            self.lbl_result.configure(text="Không tìm thấy")
-
-    # hàm hiển thị ảnh với resize fit center
-    def display_image(self, cv_img):
+    # Hiển thị frame lên GUI
+    def show_frame(self, cv_img):
         if cv_img is None: return
-        try:
-            if not self.winfo_exists(): return
-        except: return
-
-        # lấy kích thước
-        h, w, _ = cv_img.shape
-        c_w = self.main_frame.winfo_width() - 20
-        c_h = self.main_frame.winfo_height() - 20
-        if c_w < 50 or c_h < 50: c_w, c_h = 800, 600
-
-        # tính toán tỷ lệ Fit Center (Không zoom vỡ hình)
-        ratio = min(c_w / w, c_h / h)
-        new_w = int(w * ratio)
-        new_h = int(h * ratio)
         
-        # convert & Resize
-        img_rgb = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
-        pil_img = Image.fromarray(img_rgb)
-        ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(new_w, new_h))
+        h_disp = self.video_container.winfo_height()
+        w_disp = self.video_container.winfo_width()
+        if h_disp < 100: h_disp, w_disp = 600, 800 
         
-        # hiển thị & Neo biến ảnh
-        self.video_label.configure(image=ctk_img, text="")
-        self.video_label.image = ctk_img
+        h_img, w_img = cv_img.shape[:2]
+        ratio = min(w_disp/w_img, h_disp/h_img)
+        new_w, new_h = int(w_img * ratio), int(h_img * ratio)
+        
+        img_rgb = cv2.cvtColor(cv2.resize(cv_img, (new_w, new_h)), cv2.COLOR_BGR2RGB)
+        ctk_img = ctk.CTkImage(Image.fromarray(img_rgb), size=(new_w, new_h))
+        
+        self.video_display.configure(image=ctk_img, text="") 
+        self.video_display.image = ctk_img
+
+if __name__ == "__main__":
+    app = LicensePlateApp()
+    app.mainloop()
+    

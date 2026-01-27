@@ -8,7 +8,9 @@ runs/
 test_demo.py
 train.py
 datasets/
-test_video.py
+test_cam.py
+test.py
+requirements.txttest_video.py
 gui/__init__.py
 gui/__pycache__
 core/__pycache__

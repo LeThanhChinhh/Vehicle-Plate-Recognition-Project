@@ -1,14 +1,21 @@
 import cv2
 import os
+from datetime import datetime
 
 class VideoService:
-    def __init__(self, detector):
+    def __init__(self, detector, db_manager=None):
         self.detector = detector
+        self.db_manager = db_manager
         
+        self.save_folder = "captured_images"
+        os.makedirs(self.save_folder, exist_ok=True)
+        
+        #biến session
+        self.session_active = False
         self.best_result = None
-        # Đếm số frame mất dấu liên tiếp
-        self.missing_count = 0
-        self.RESET_THRESHOLD = 20
+        self.best_frame = None
+        self.missing_count = 0      
+        self.timeout_frames = 30   
 
     def process_video_stream(self, video_path, skip_frames=3):
         if not os.path.exists(video_path):
@@ -18,86 +25,85 @@ class VideoService:
         cap = cv2.VideoCapture(video_path)
         frame_count = 0
 
-        global_best_result = None
-        global_best_frame = None
-
         while cap.isOpened():
             ret, frame = cap.read()
-            if not ret:
-                break
+            if not ret: break
 
-            # Resize
             h, w = frame.shape[:2]
             if w > 800:
                 frame = cv2.resize(frame, (800, int(h * 800/w)))
 
-            # Logic dectect 
+            #skip frame để tiết kiệm cpu
+            current_result = None
             if frame_count % (skip_frames + 1) == 0:
                 current_result = self.detector.detect_plate(frame)
-
-                if current_result['has_plate']:
-                    # Cập nhật session
-                    self.missing_count = 0
-                    if self.best_result is None:
-                        self.best_result = current_result
-                    else:
-                        if current_result['conf'] > self.best_result['conf']:
-                            self.best_result = current_result
-                        else:
-                            # Cập nhật text
-                            current_result['text'] = self.best_result['text']
-                            current_result['conf'] = self.best_result['conf']
-                            self.best_result = current_result
-
-                    # lưu lại độ tin cậy cao nhất video
-                    if global_best_result is None or current_result['conf'] > global_best_result['conf']:
-                        global_best_result = current_result
-                        global_best_frame = frame.copy() # Phải copy frame gốc để lưu trữ
-
-                        self._draw_on_frame(global_best_frame, global_best_result)
-
-                else:
-                    self.missing_count += 1
             
-            # Reset Session nếu mất dấu quá lâu
-            if self.missing_count > self.RESET_THRESHOLD:
+            #tìm frame có độ tin cậy cao nhất để lưu
+            if current_result and current_result['has_plate']:
+                self.missing_count = 0
+                self.session_active = True
+                
+                if self.best_result is None or current_result['conf'] > self.best_result['conf']:
+                    self.best_result = current_result
+                    self.best_frame = frame.copy()
+
+            elif self.session_active:
+                self.missing_count += 1
+
+            #nếu vượt quá ngưỡng không thấy biển số thì lưu kết quả và reset
+            if self.session_active and self.missing_count > self.timeout_frames:
+                self._save_session_to_db()
+                self.session_active = False
                 self.best_result = None
+                self.best_frame = None
                 self.missing_count = 0
 
-            # Trả frame hiện tại
-            if self.best_result and self.best_result['has_plate']:
-                self._draw_on_frame(frame, self.best_result)
+            #vẽ len frame để hiển thị
+            display_result = current_result if (current_result and current_result['has_plate']) else self.best_result
+            
+            if display_result and display_result['has_plate']:
+                 if self.missing_count < self.timeout_frames:
+                    self._draw_on_frame(frame, display_result)
 
-            yield frame, self.best_result
+            yield frame, display_result
             frame_count += 1
 
-        cap.release()
-        
-        # kết thúc video
-        # Trả về kết quả tốt nhất toàn video
-        if global_best_result is not None and global_best_frame is not None:
-            final_text = global_best_result['text']
-            final_conf = global_best_result['conf']
-            
-            print(f"\n[INFO] HOÀN THÀNH VIDEO. KẾT QUẢ TỐT NHẤT: {final_text} (Conf: {final_conf})")
-            
-            # Yield lần cuối cùng
-            yield global_best_frame, global_best_result
+        if self.session_active and self.best_result:
+            self._save_session_to_db()
 
+        cap.release()
+
+    def _save_session_to_db(self):
+        if not self.db_manager or not self.best_result: return
+        
+        try:
+            plate = self.best_result['text']
+            conf = self.best_result['conf']
+            
+            #copy ảnh gốc để vẽ khung và lưu
+            frame_to_save = self.best_frame.copy()
+            self._draw_on_frame(frame_to_save, self.best_result)
+            
+            #save về folder captued_images
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"anh_tu_video_{timestamp}_{plate}.jpg"
+            path = os.path.join(self.save_folder, filename)
+            
+            cv2.imwrite(path, frame_to_save)
+            
+            #lưu vào db
+            self.db_manager.save_plate(plate, path, conf)
+            print(f"\nĐã lưu ảnh: {plate}")
+            
+        except Exception as e:
+            print(f"Lỗi: {e}")
+
+    #hàm vẽ khung và text lên frame
     def _draw_on_frame(self, frame, result):
-        if not result or 'box' not in result:
-            return
+        if not result or 'box' not in result: return
         box = result['box']
         text = result['text']
         conf = result['conf']
         x1, y1, x2, y2 = map(int, box)
-        
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        
-        label = f"{text} ({conf:.2f})"
-        (w_text, h_text), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
-        cv2.rectangle(frame, (x1, y1 - 30), (x1 + w_text, y1), (0, 255, 0), -1)
-        
-        # Vẽ chữ
-        cv2.putText(frame, label, (x1, y1 - 10), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
+        cv2.putText(frame, f"{text} ({conf})", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)

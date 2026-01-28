@@ -17,11 +17,10 @@ class LicensePlateApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         
-        # 1. Cấu hình Window
+        # Cấu hình Window
         self.title("AI PARKING SYSTEM - PRO VERSION")
         self.geometry("1280x760")
         
-        # Biến màu sắc
         self.color_bg_main = "#101010"
         self.color_bg_side = "#1A1A1A"
         self.color_accent  = "#00ADB5"
@@ -65,7 +64,6 @@ class LicensePlateApp(ctk.CTk):
         self.sidebar.grid_rowconfigure(10, weight=1) 
         self.sidebar.grid_columnconfigure(0, weight=1)
 
-        # --- HEADER ---
         self.lbl_logo = ctk.CTkLabel(self.sidebar, text="AUTO PARKING\nSYSTEM", 
                                      font=ctk.CTkFont(family="Roboto", size=24, weight="bold"), 
                                      text_color=self.color_text)
@@ -74,7 +72,7 @@ class LicensePlateApp(ctk.CTk):
         div = ctk.CTkFrame(self.sidebar, height=2, fg_color="#333333")
         div.grid(row=1, column=0, sticky="ew", padx=30, pady=(0, 30))
 
-        # --- INPUT GROUP ---
+        # Input group
         lbl_input = ctk.CTkLabel(self.sidebar, text="NGUỒN DỮ LIỆU", anchor="w", 
                                  font=ctk.CTkFont(size=12, weight="bold"), text_color="#888888")
         lbl_input.grid(row=2, column=0, sticky="w", padx=30, pady=(0, 10))
@@ -93,7 +91,7 @@ class LicensePlateApp(ctk.CTk):
                                        command=self.on_click_video)
         self.btn_video.grid(row=4, column=0, padx=20, pady=5, sticky="ew")
 
-        # --- CONTROL GROUP ---
+        # Control group
         lbl_control = ctk.CTkLabel(self.sidebar, text="ĐIỀU KHIỂN", anchor="w", 
                                    font=ctk.CTkFont(size=12, weight="bold"), text_color="#888888")
         lbl_control.grid(row=5, column=0, sticky="w", padx=30, pady=(30, 10))
@@ -110,7 +108,7 @@ class LicensePlateApp(ctk.CTk):
                                       command=self.stop_stream)
         self.btn_stop.grid(row=7, column=0, padx=20, pady=5, sticky="ew")
 
-        # --- RESULT AREA ---
+        # Result
         res_frame = ctk.CTkFrame(self.sidebar, width=240, height=140, 
                                  fg_color="black", corner_radius=12, 
                                  border_width=1, border_color="#333333")
@@ -200,7 +198,7 @@ class LicensePlateApp(ctk.CTk):
             return
 
         try:
-            # TÍNH TOÁN FPS
+            # Tính toán FPS
             curr_time = time.time()
             fps = 1 / (curr_time - self.prev_time) if (curr_time - self.prev_time) > 0 else 0
             self.prev_time = curr_time
@@ -211,17 +209,18 @@ class LicensePlateApp(ctk.CTk):
             if isinstance(data, tuple):
                 frame, result = data
                 
-                # LOG RA TERMINAL
+                # Cập nhật ui theo kết quả
                 if result and result.get('has_plate'):
                     text = result['text']
-                    conf = result['conf']
+                    
                     self.lbl_result.configure(text=text)
                     
-                    print(f"\033[92m [FPS: {int(fps)}] DETECTED: {text} | Conf: {conf}\033[0m")
+                    
+                    
             else:
                 frame = data
 
-            # VẼ FPS LÊN MÀN HÌNH
+            # Hiển thị FPS lên góc video
             cv2.putText(frame, f"FPS: {int(fps)}", (20, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
@@ -229,14 +228,16 @@ class LicensePlateApp(ctk.CTk):
             self.after_id = self.after(30, self.update_ui_loop)
 
         except StopIteration:
-            self.stop_stream()
-            messagebox.showinfo("Thông báo", "Đã kết thúc video.")
+            # Xử lý khi video kết thúc
+            self.stop_stream(clear_ui=False) 
+            messagebox.showinfo("Thông báo", "Đã hoàn tất video.\nKết quả tốt nhất đang hiển thị.")
+            
         except Exception as e:
             print(f"Error Loop: {e}")
-            self.stop_stream()
+            self.stop_stream(clear_ui=True) # Lỗi thì xóa sạch
 
     # Dừng vòng lặp UI
-    def stop_stream(self):
+    def stop_stream(self, clear_ui= True):
         self.is_running = False
         self.current_stream = None
         if self.after_id:
@@ -247,9 +248,9 @@ class LicensePlateApp(ctk.CTk):
         self.btn_img.configure(state="normal")
         self.btn_video.configure(state="normal")
         self.btn_cam.configure(state="normal")
-        
-        self.video_display.configure(image=None, text="ĐÃ DỪNG HỆ THỐNG")
-        self.lbl_result.configure(text="---")
+        if clear_ui:
+            self.video_display.configure(image=None, text="ĐÃ DỪNG HỆ THỐNG")
+            self.lbl_result.configure(text="---")
 
     # Hiển thị frame lên GUI
     def show_frame(self, cv_img):

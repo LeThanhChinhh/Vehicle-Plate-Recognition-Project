@@ -224,7 +224,7 @@ class LicensePlateApp(ctk.CTk):
                     self.lbl_result.configure(text=text)
                     
                     # Log màu xanh rờn cho nó ngầu
-                    print(f"\033[92m🚀 [FPS: {int(fps)}] DETECTED: {text} | Conf: {conf}\033[0m")
+                    print(f"\033[92m[FPS: {int(fps)}] DETECTED: {text} | Conf: {conf}\033[0m")
             else:
                 frame = data
 

@@ -20,3 +20,4 @@ test_video.py
 video2.mp4
 video3.mp4
 main.py
+*.jpg

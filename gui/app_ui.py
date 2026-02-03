@@ -164,7 +164,7 @@ class LicensePlateApp(ctk.CTk):
                     text = result['text'] if result and result.get('has_plate') else "NO PLATE"
                     self.lbl_result.configure(text=text)
                     self.show_frame(processed_img)
-                    print(f"📸 Xử lý ảnh xong: {text}")
+                    print(f" Xử lý ảnh xong: {text}")
             except Exception as e:
                 print(f"Lỗi ảnh: {e}")
 

@@ -4,11 +4,12 @@
 
 ## Thành Viên Thực Hiện (Project Team)
 
-| STT | Họ và Tên             |  Vai trò (Role)    |
-|:---:|:----------------------|: -----------------:|
-| 1   | **Lê Thành Chính**    | Nhóm trưởng        |
-| 2   | **Trần Phát Tài**     | Thành viên         |
-| 3   | **Võ Đoàn Duy Quang** | Thành viên         |
+| STT | Họ và Tên           | Vai trò (Role) |
+|-----|---------------------|----------------|
+| 1   | **Lê Thành Chỉnh**  | Nhóm trưởng   |
+| 2   | **Trần Phát Tài**   | Thành viên    |
+| 3   | **Võ Đoàn Duy Quang** | Thành viên    |
+
 
 ##  Tính Năng Nổi Bật
 
@@ -21,13 +22,13 @@
 
 ### 2. Chế độ Video & Camera
 
-* **Chọn ảnh tốt nhất:**
+**Chọn ảnh tốt nhất:**
 * Ứng dụng **KHÔNG** lưu ảnh tràn lan.
 * Tự động theo dõi xe từ lúc xuất hiện cho đến khi đi khuất.
 * So sánh liên tục và chỉ lưu **duy nhất 1 tấm ảnh rõ nét nhất** của phiên đó.
 
 
-* **Chống trùng lặp:**
+**Chống trùng lặp:**
 * Ngăn chặn việc ghi trùng lặp dữ liệu khi xe dừng lâu một chỗ.
 * Chỉ ghi nhận xe đã rời đi hoặc sau một khoảng thời gian chờ.
 
